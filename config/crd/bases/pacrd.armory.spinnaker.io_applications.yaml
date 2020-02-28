@@ -1,0 +1,122 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.2.4
+  creationTimestamp: null
+  name: applications.pacrd.armory.spinnaker.io
+spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.url
+    name: URL
+    type: string
+  - JSONPath: .status.lastConfigured
+    description: Last Configured
+    name: lastConfigured
+    type: date
+  - JSONPath: .spec.project
+    description: Project
+    name: project
+    type: string
+  - JSONPath: .status.status
+    description: Status
+    name: status
+    type: string
+  group: pacrd.armory.spinnaker.io
+  names:
+    kind: Application
+    listKind: ApplicationList
+    plural: applications
+    shortNames:
+    - app
+    singular: application
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      description: Application is the Schema for the applications API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: ApplicationSpec defines the desired state of Application
+          properties:
+            dataSources:
+              description: DataSources TODO
+              properties:
+                disabled:
+                  items:
+                    type: string
+                  type: array
+                enabled:
+                  items:
+                    type: string
+                  type: array
+              type: object
+            description:
+              description: Description explains the purpose of this application.
+              type: string
+            email:
+              description: Email points to the e-mail user or list that owns this
+                application.
+              type: string
+            permissions:
+              description: DataSources TODO
+              properties:
+                EXECUTE:
+                  description: Execute TODO
+                  items:
+                    type: string
+                  type: array
+                READ:
+                  description: Read TODO
+                  items:
+                    type: string
+                  type: array
+                WRITE:
+                  description: Write TODO
+                  items:
+                    type: string
+                  type: array
+              type: object
+            user:
+              description: User is...? TODO
+              type: string
+          type: object
+        status:
+          description: ApplicationStatus defines the observed state of Application
+          properties:
+            lastConfigured:
+              description: LastConfigured represents the last time the operator updated
+                this application in Spinnaker.
+              format: date-time
+              type: string
+            status:
+              description: Status represents the current status of this application.
+              type: string
+          type: object
+      type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
