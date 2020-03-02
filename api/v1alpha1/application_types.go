@@ -16,6 +16,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/armory/plank"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -23,21 +24,21 @@ import (
 type Permissions struct {
 	// +optional
 	// Read TODO
-	Read []string `json:"READ,omitempty"`
+	Read *[]string `json:"READ,omitempty"`
 	// +optional
 	// Write TODO
-	Write []string `json:"WRITE,omitempty"`
+	Write *[]string `json:"WRITE,omitempty"`
 	// +optional
 	// Execute TODO
-	Execute []string `json:"EXECUTE,omitempty"`
+	Execute *[]string `json:"EXECUTE,omitempty"`
 }
 
 // DataSources TODO
 type DataSources struct {
 	// +optional
-	Enabled []string `json:"enabled,omitempty"`
+	Enabled *[]string `json:"enabled,omitempty"`
 	// +optional
-	Disabled []string `json:"disabled,omitempty"`
+	Disabled *[]string `json:"disabled,omitempty"`
 }
 
 // ApplicationSpec defines the desired state of Application
@@ -54,28 +55,51 @@ type ApplicationSpec struct {
 
 	// +optional
 	// DataSources TODO
-	DataSources `json:"dataSources,omitempty"`
+	*DataSources `json:"dataSources,omitempty"`
 
 	// +optional
 	// DataSources TODO
-	Permissions `json:"permissions,omitempty"`
+	*Permissions `json:"permissions,omitempty"`
 }
 
 // ApplicationStatus defines the observed state of Application
 type ApplicationStatus struct {
-	// +optional
 	// LastConfigured represents the last time the operator updated this application in Spinnaker.
 	LastConfigured metav1.Time `json:"lastConfigured,omitempty"`
-	// Status represents the current status of this application.
-	Status string `json:"status,omitempty"`
+	// Phase represents the current status of this application.
+	Phase ApplicationPhase `json:"phase,omitempty"`
+	// Url represents the URL of the configured Spinnaker cluster.
+	URL string `json:"url,omitempty"`
 }
+
+// ApplicationPhase represents the various stages a application could be in with Spinnaker.
+//+kubebuilder:validation:Enum=ErrorNotFound;Creating;ErrorFailedToCreate;Created;Deleting;ErrorDeletingApplication;Updated;ErrorUpdatingApplication
+type ApplicationPhase string
+
+const (
+	// ApplicationOrApplicationNotFound means a application couldn't be attached to an application.
+	ApplicationOrPipelineNotFound ApplicationPhase = "ErrorNotFound"
+	// ApplicationCreating means the application is being created in Spinnaker
+	ApplicationCreating ApplicationPhase = "Creating"
+	// ApplicationCreationFailed indicates that the application could not be saved upstream.
+	ApplicationCreationFailed ApplicationPhase = "ErrorFailedToCreate"
+	// ApplicationCreated indicates the application was successfully saved upstream.
+	ApplicationCreated ApplicationPhase = "Created"
+	// ApplicationDeleting indicates the application is in the process of deing deleted upstream.
+	ApplicationDeleting ApplicationPhase = "Deleting"
+	// ApplicationDeletionFailed indicates there was a problem deleting the application upstream.
+	ApplicationDeletionFailed ApplicationPhase = "ErrorDeletingApplication"
+	// ApplicationUpdateFailed indicates that a application failed to update upstream.
+	ApplicationUpdateFailed ApplicationPhase = "ErrorUpdatingApplication"
+	// ApplicationUpdated indicates that a application was successfully updated upstream.
+	ApplicationUpdated ApplicationPhase = "Updated"
+)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.url",name=URL,type=string
+// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.phase",description="Status"
 // +kubebuilder:printcolumn:name="lastConfigured",type="date",JSONPath=".status.lastConfigured",description="Last Configured"
-// +kubebuilder:printcolumn:name="project",type="string",JSONPath=".spec.project",description="Project"
-// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.status",description="Status"
+// +kubebuilder:printcolumn:JSONPath=".status.url",name=URL,type=string
 // +kubebuilder:resource:path=applications,shortName=app
 
 // Application is the Schema for the applications API
@@ -98,4 +122,50 @@ type ApplicationList struct {
 
 func init() {
 	SchemeBuilder.Register(&Application{}, &ApplicationList{})
+}
+
+// ToSpinApplication translates a CRD Application to a Spinnaker Application.
+func (a Application) ToSpinApplication() plank.Application {
+	spinApp := plank.Application{
+		Name:        a.Name,
+		Email:       a.Spec.Email,
+		Description: a.Spec.Description,
+		User:        a.Spec.User,
+	}
+
+	if a.Spec.DataSources != nil {
+
+		spinApp.DataSources = &plank.DataSourcesType{}
+
+		if a.Spec.DataSources.Disabled != nil {
+			spinApp.DataSources.Disabled = *a.Spec.DataSources.Disabled
+		}
+		if a.Spec.DataSources.Enabled != nil {
+			spinApp.DataSources.Enabled = *a.Spec.DataSources.Enabled
+		}
+	}
+
+	if a.Spec.Permissions != nil {
+		spinApp.Permissions = &plank.PermissionsType{}
+
+		if a.Spec.Permissions.Read != nil {
+			spinApp.Permissions.Read = *a.Spec.Permissions.Read
+		}
+
+		if a.Spec.Permissions.Write != nil {
+			spinApp.Permissions.Write = *a.Spec.Permissions.Write
+		}
+
+		if a.Spec.Permissions.Execute != nil {
+			spinApp.Permissions.Execute = *a.Spec.Permissions.Execute
+		}
+	}
+
+	return spinApp
+}
+
+// ShouldDelete determines if the current Application should be deleted from Spinnaker.
+// NOTE: This assumes finalizers have been set appropriately. If it's empty then this will never be true.
+func (a Application) ShouldDelete() bool {
+	return !a.GetObjectMeta().GetDeletionTimestamp().IsZero()
 }

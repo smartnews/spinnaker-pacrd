@@ -4,4 +4,7 @@ resources:
 - group: pacrd
   kind: Application
   version: v1alpha1
+- group: pacrd
+  kind: Pipeline
+  version: v1alpha1
 version: "2"

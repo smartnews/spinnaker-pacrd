@@ -1,24 +1,20 @@
 package controllers
 
-import (
-	pacrdv1alpha1 "github.com/armory-io/pacrd/api/v1alpha1"
-	"github.com/armory/plank"
-)
-
-func toSpinApplication(app pacrdv1alpha1.Application) plank.Application {
-	return plank.Application{
-		Name:        app.Name,
-		Email:       app.Spec.Email,
-		Description: app.Spec.Description,
-		User:        app.Spec.User,
-		DataSources: plank.DataSourcesType{
-			Enabled:  app.Spec.DataSources.Enabled,
-			Disabled: app.Spec.DataSources.Disabled,
-		},
-		Permissions: plank.PermissionsType{
-			Read:    app.Spec.Permissions.Read,
-			Write:   app.Spec.Permissions.Write,
-			Execute: app.Spec.Permissions.Execute,
-		},
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
 	}
+	return false
+}
+
+func removeString(slice []string, s string) (result []string) {
+	for _, item := range slice {
+		if item == s {
+			continue
+		}
+		result = append(result, item)
+	}
+	return
 }

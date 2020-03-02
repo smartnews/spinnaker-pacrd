@@ -18,54 +18,48 @@ package controllers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/armory/plank"
 	"github.com/go-logr/logr"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pacrdv1alpha1 "github.com/armory-io/pacrd/api/v1alpha1"
+	"github.com/armory-io/pacrd/spinnaker"
 )
 
 const (
 	// ControllerName represents this controller's name.
 	ControllerName = "spinnaker-application-controller"
-	// FinalizerName is used to mark which objects have been processed for deletion.
-	FinalizerName = "app.finalizers.armory.io"
+	// AppFinalizerName is used to mark which objects have been processed for deletion.
+	AppFinalizerName = "app.finalizers.armory.io"
 )
-
-// SpinnakerClient negotiates interactions with a Spinnaker cluster.
-type SpinnakerClient interface {
-	GetApplication(string) (*plank.Application, error)
-	CreateApplication(*plank.Application) error
-	DeleteApplication(string) error
-	GetPipelines(string) ([]plank.Pipeline, error)
-	DeletePipeline(plank.Pipeline) error
-	UpsertPipeline(plank.Pipeline, string) error
-	ResyncFiat() error
-	ArmoryEndpointsEnabled() bool
-	EnableArmoryEndpoints()
-}
 
 // ApplicationReconciler reconciles a Application object
 type ApplicationReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
-	SpinnakerClient
+	Log             logr.Logger
+	Scheme          *runtime.Scheme
+	SpinnakerClient spinnaker.Client
+	Recorder        record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=pacrd.armory.spinnaker.io,resources=applications,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=pacrd.armory.spinnaker.io,resources=applications/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=events,verbs=patch
 
 // Reconcile Application state within the cluster.
 func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	ctx := context.Background()
 	logger := r.Log.WithValues("application", req.NamespacedName)
 	logger.Info("reconciling application")
+	// TODO note that if the app name changes in the object I don't think we'll
+	// be able to cleanly remove it from Spinnaker...
 
 	// Get a handle on the CRD application under scrutiny
 	var app pacrdv1alpha1.Application
@@ -73,86 +67,142 @@ func (r *ApplicationReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Determine if we're actively deleting the CRD and make sure we clean up
-	// any Spinnaker resources that are related. Finalizers are initialized
-	// further down the method.
-	// TODO delete seems unreliable at this time; about 50/50 chance that
-	// delete loop runs during reconcile of a delete. Potentially related to
-	// port-forwarding on my local machine.
-	// TODO move to DeleteApplicationFromSpinnaker fn
-	if !app.GetObjectMeta().GetDeletionTimestamp().IsZero() {
-		finalizers := app.GetObjectMeta().GetFinalizers()
+	// If this is the first time we're seeing this pipeline, set it's status.
+	if app.Status.Phase == "" {
+		_ = r.setPhase(app, pacrdv1alpha1.ApplicationCreating)
+	}
 
+	if app.ShouldDelete() {
 		logger.Info("deleting application")
+		_ = r.setPhase(app, pacrdv1alpha1.ApplicationDeleting)
 
-		if containsString(finalizers, FinalizerName) {
-			if err := r.SpinnakerClient.DeleteApplication(app.Name); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			logger.Info("successfully deleted application from spinnaker")
-
-			// Make sure we clean up the finalizer so k8s knows we're done with
-			// this resource.
-			app.SetFinalizers(removeString(finalizers, FinalizerName))
-			if err := r.Update(context.Background(), &app); err != nil {
-				return ctrl.Result{}, err
-			}
+		if err := r.deleteApplication(app); err != nil {
+			r.Recorder.Eventf(
+				&app,
+				"Warning",
+				string(pacrdv1alpha1.ApplicationDeletionFailed),
+				err.Error(),
+			)
+			return r.complete(app, pacrdv1alpha1.ApplicationDeletionFailed, err)
 		}
 
-		logger.Info("done deleting application")
+		logger.Info("successfully deleted application from spinnaker")
 		return ctrl.Result{}, nil
+	} else if err := r.setFinalizer(app); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// First, attempt to find the Spinnaker app.
 	// TODO move to GetOrCreateApplicationFromSpinnaker fn
-	pApp, spinErr := r.SpinnakerClient.GetApplication(req.Name)
+	_, spinErr := r.SpinnakerClient.GetApplication(req.Name)
 	var ue *plank.ErrUnsupportedStatusCode
 	if spinErr != nil {
 		// If we didn't find the Spinnaker app, create it.
 		if errors.As(spinErr, &ue) && ue.Code == 404 {
-			logger.Info("did not find application in Spinnaker. Creating...")
-			spinApp := toSpinApplication(app)
+			logger.Info("did not find application in Spinnaker, creating...")
+			spinApp := app.ToSpinApplication()
 			spinErr = r.SpinnakerClient.CreateApplication(&spinApp)
 			// If we got an error from Spinnaker we failed to create the app,
 			// so requeue the event.
 			if spinErr != nil {
 				// TODO it's possible this will never succeed, consider backoff
 				//      or general failure
-				return ctrl.Result{}, spinErr
+				return r.complete(app, pacrdv1alpha1.ApplicationCreationFailed, spinErr)
 			}
+
+			r.Recorder.Eventf(
+				&app,
+				"Normal",
+				string(pacrdv1alpha1.ApplicationCreated),
+				"Application created in Spinnaker",
+			)
 			logger.Info("created spinnaker app")
-			return ctrl.Result{}, nil
+			return r.complete(app, pacrdv1alpha1.ApplicationCreated, nil)
 		}
 
 		// Otherwise something else broke, so requeue the event.
 		// TODO understand this failure case
-		logger.Error(spinErr, "what does this do")
-		return ctrl.Result{}, spinErr
+
+		r.Recorder.Eventf(
+			&app,
+			"Warning",
+			string(pacrdv1alpha1.ApplicationCreationFailed),
+			spinErr.Error(),
+		)
+		return r.complete(app, pacrdv1alpha1.ApplicationCreationFailed, spinErr)
 	}
 
-	// Register our finalizer so that we make sure to delete the Spinnaker app
-	// when the CRD is deleted.
-	// TODO move to RegisterDeleteFinalizer fn
-	finalizers := app.GetObjectMeta().GetFinalizers()
-	if !containsString(finalizers, FinalizerName) {
-		app.SetFinalizers(append(finalizers, FinalizerName))
-		if err := r.Update(context.Background(), &app); err != nil {
-			return ctrl.Result{}, err
-		}
+	logger.Info("updating application in Spinnaker")
+	// Apply whatever is in the CRD to Spinnaker
+	spinApp := app.ToSpinApplication()
+	if err := r.SpinnakerClient.UpdateApplication(spinApp); err != nil {
+		r.Recorder.Eventf(
+			&app,
+			"Warning",
+			string(pacrdv1alpha1.ApplicationUpdateFailed),
+			err.Error(),
+		)
+		return r.complete(app, pacrdv1alpha1.ApplicationUpdateFailed, err)
 	}
 
 	app.Status.LastConfigured = v1.Time{Time: time.Now()}
+	// TODO generalize this
+	// TODO set phase appropriately
+	app.Status.URL = fmt.Sprintf("http://localhost:9000/#/applications/%s/clusters", app.Name)
 	if err := r.Status().Update(context.Background(), &app); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	logger.Info(pApp.Name)
-
-	// TODO set URL for application
-
+	r.Recorder.Eventf(
+		&app,
+		"Normal",
+		string(pacrdv1alpha1.ApplicationUpdated),
+		"Application updated",
+	)
 	logger.Info("done reconciling application")
-	return ctrl.Result{}, nil
+	return r.complete(app, pacrdv1alpha1.ApplicationUpdated, nil)
+}
+
+func (r *ApplicationReconciler) deleteApplication(app pacrdv1alpha1.Application) error {
+	// Determine if we're actively deleting the CRD and make sure we clean up
+	// any Spinnaker resources that are related. Finalizers are initialized
+	// further down the method.
+	finalizers := app.GetObjectMeta().GetFinalizers()
+
+	if containsString(finalizers, AppFinalizerName) {
+		if err := r.SpinnakerClient.DeleteApplication(app.Name); err != nil {
+			var ue *plank.ErrUnsupportedStatusCode
+			if errors.As(err, &ue) && ue.Code == 404 {
+				// This situation implies the application was already deleted, either
+				// by something else or a previously failed delete reconcile. Either
+				// way we only care that it's gone, so do nothing here.
+			} else {
+				return err
+			}
+		}
+
+		// Make sure we clean up the finalizer so k8s knows we're done with
+		// this resource.
+		app.SetFinalizers(removeString(finalizers, AppFinalizerName))
+		if err := r.Update(context.Background(), &app); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Register finalizers so that deletes propagate properly.
+func (r *ApplicationReconciler) setFinalizer(app pacrdv1alpha1.Application) error {
+	finalizers := app.GetObjectMeta().GetFinalizers()
+	if !containsString(finalizers, AppFinalizerName) {
+		app.SetFinalizers(append(finalizers, AppFinalizerName))
+		if err := r.Update(context.Background(), &app); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -161,21 +211,18 @@ func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
+func (r *ApplicationReconciler) setPhase(app pacrdv1alpha1.Application, p pacrdv1alpha1.ApplicationPhase) error {
+	if app.Status.Phase == p {
+		return nil // Nothing to update
 	}
-	return false
+	app.Status.Phase = p
+	app.Status.LastConfigured = v1.Time{Time: time.Now()}
+	return r.Status().Update(context.Background(), &app)
 }
 
-func removeString(slice []string, s string) (result []string) {
-	for _, item := range slice {
-		if item == s {
-			continue
-		}
-		result = append(result, item)
-	}
-	return
+// Complete a reconciliation loop for the current pipeline and update phase.
+// TODO this is a good candidate for some interfaces so it can be shared w/ app controller
+func (r *ApplicationReconciler) complete(app pacrdv1alpha1.Application, phase pacrdv1alpha1.ApplicationPhase, e error) (ctrl.Result, error) {
+	_ = r.setPhase(app, phase)
+	return ctrl.Result{}, e
 }
