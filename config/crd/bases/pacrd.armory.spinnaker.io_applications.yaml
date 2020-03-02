@@ -9,20 +9,16 @@ metadata:
   name: applications.pacrd.armory.spinnaker.io
 spec:
   additionalPrinterColumns:
-  - JSONPath: .status.url
-    name: URL
+  - JSONPath: .status.phase
+    description: Status
+    name: status
     type: string
   - JSONPath: .status.lastConfigured
     description: Last Configured
     name: lastConfigured
     type: date
-  - JSONPath: .spec.project
-    description: Project
-    name: project
-    type: string
-  - JSONPath: .status.status
-    description: Status
-    name: status
+  - JSONPath: .status.url
+    name: URL
     type: string
   group: pacrd.armory.spinnaker.io
   names:
@@ -104,8 +100,20 @@ spec:
                 this application in Spinnaker.
               format: date-time
               type: string
-            status:
-              description: Status represents the current status of this application.
+            phase:
+              description: Phase represents the current status of this application.
+              enum:
+              - ErrorNotFound
+              - Creating
+              - ErrorFailedToCreate
+              - Created
+              - Deleting
+              - ErrorDeletingApplication
+              - Updated
+              - ErrorUpdatingApplication
+              type: string
+            url:
+              description: Url represents the URL of the configured Spinnaker cluster.
               type: string
           type: object
       type: object

@@ -1,0 +1,64 @@
+---
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Application
+metadata:
+  name: api-server
+spec:
+  email: ***REMOVED***
+  description: Slightly more complicated pipeline
+
+---
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: simple-deployment
+spec:
+  description: This is a simple deployment
+  application: api-server
+  parameterConfig:
+    - name: run-with-judgment
+      default: "true"
+      hasOptions: false
+      label: Run with a Judgment step
+      pinned: false
+      required: true
+  expectedArtifacts:
+    - displayName: &judgmentArtifact judgment-config
+      id: &judgmentArtifactId judgment-config-1
+      matchArtifact:
+        artifactAccount: &account kubernetes
+        name: *judgmentArtifact
+        reference: *account
+        type: kubernetes/configMap
+      useDefaultArtifact: false
+      usePriorArtifact: false
+  stages:
+    - type: BakeManifest
+      refId: "1"
+      name: Bake Simple Deploy
+      bakeManifest:
+        namespace: ***REMOVED***
+        evaluateOverrideExpressions: false
+        outputName: cm
+        inputArtifacts:
+          - id: *judgmentArtifactId
+            name: *judgmentArtifact
+            account: *account
+        templateRenderer: helm2
+        failPipeline: false
+        continuePipeline: false
+        completeOtherBranchesThenFail: true
+        overrides:
+          foo: bar
+    - type: ManualJudgment
+      name: Manual Judgment
+      refId: "2"
+      requisiteStageRefIds: [ "1" ]
+      stageEnabled:
+        type: expression
+        expression: "${parameters.run-with-judgment} == true"
+      manualJudgment:
+        failPipeline: true
+        continuePipeline: false
+        completeOtherBranchesThenFail: false
+        instructions: "Do you want this build to success?"

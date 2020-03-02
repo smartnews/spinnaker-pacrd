@@ -1,0 +1,24 @@
+
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: bakery
+spec:
+  description: This is what it takes to run a bakery.
+  application: dne
+  stages:
+    - type: bakeManifest
+      name: Bake Some Bread
+      evaluateOverrideExpressions: false
+      outputName: bread
+      expectedArtifacts: []
+      inputArtifacts: []
+      templateRenderer: helm2
+    #- type: FindArtifactFromResource
+      #name: Find the Bread
+      #account: "hlp-eks-spe-navnonprod-pdx"
+      #app: woohoo
+      #cloudProvider: kubernetes
+      #location: entitlements
+      #manifestName: "deployment eks-spe-entitlements-***REMOVED***"
+    #  mode: static

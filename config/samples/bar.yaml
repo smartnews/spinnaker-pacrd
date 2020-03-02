@@ -1,0 +1,7 @@
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Application
+metadata:
+  name: woohoo
+spec:
+  email: ***REMOVED***
+  description: because pointers!

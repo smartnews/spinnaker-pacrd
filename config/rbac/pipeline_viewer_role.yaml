@@ -1,0 +1,20 @@
+# permissions to do viewer pipelines.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pipeline-viewer-role
+rules:
+- apiGroups:
+  - pacrd.armory.spinnaker.io
+  resources:
+  - pipelines
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - pacrd.armory.spinnaker.io
+  resources:
+  - pipelines/status
+  verbs:
+  - get
