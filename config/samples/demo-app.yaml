@@ -1,0 +1,7 @@
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-application
+spec:
+  email: fernando.freire@armory.io
+  description: We are doing a demo!

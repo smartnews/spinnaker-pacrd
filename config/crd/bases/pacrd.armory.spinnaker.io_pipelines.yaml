@@ -1,0 +1,608 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.2.4
+  creationTimestamp: null
+  name: pipelines.pacrd.armory.spinnaker.io
+spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.phase
+    description: Status
+    name: status
+    type: string
+  - JSONPath: .status.lastConfigured
+    description: Last Configured
+    name: lastConfigured
+    type: date
+  - JSONPath: .status.url
+    name: URL
+    type: string
+  group: pacrd.armory.spinnaker.io
+  names:
+    kind: Pipeline
+    listKind: PipelineList
+    plural: pipelines
+    shortNames:
+    - pipe
+    singular: pipeline
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      description: Pipeline is the Schema for the pipelines API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: PipelineSpec defines the desired state of Pipeline
+          properties:
+            allowParallelExecutions:
+              description: AllowParallelExecutions TODO
+              type: boolean
+            application:
+              description: Application is a reference to the application that owns
+                this pipeline.
+              type: string
+            description:
+              description: Description tells the user what this pipeline is for.
+              type: string
+            executionEngine:
+              description: ExecutionEngine TODO
+              type: string
+            expectedArtifacts:
+              items:
+                description: Artifact TODO
+                properties:
+                  defaultArtifact:
+                    properties:
+                      artifactAccount:
+                        type: string
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      reference:
+                        type: string
+                      type:
+                        type: string
+                      version:
+                        type: string
+                    type: object
+                  displayName:
+                    type: string
+                  id:
+                    type: string
+                  matchArtifact:
+                    properties:
+                      artifactAccount:
+                        type: string
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      string:
+                        type: string
+                      type:
+                        type: string
+                      version:
+                        type: string
+                    type: object
+                  useDefaultArtifact:
+                    type: boolean
+                  usePriorArtifact:
+                    type: boolean
+                required:
+                - displayName
+                - id
+                type: object
+              type: array
+            keepWaitingPipelines:
+              description: KeepWaitingPipelines TODO
+              type: boolean
+            limitConccurent:
+              description: LimitConcurrent TODO
+              type: boolean
+            parameterConfig:
+              items:
+                properties:
+                  default:
+                    type: string
+                  description:
+                    type: string
+                  hasOptions:
+                    type: boolean
+                  label:
+                    type: string
+                  name:
+                    type: string
+                  options:
+                    items:
+                      properties:
+                        value:
+                          type: string
+                      required:
+                      - value
+                      type: object
+                    type: array
+                  pinned:
+                    type: boolean
+                  required:
+                    type: boolean
+                required:
+                - name
+                type: object
+              type: array
+            stages:
+              description: Stages TODO
+              items:
+                description: 'StageUnion is a union type that encompasses strongly
+                  typed stage defnitions. FIXME: in general: notifications, execution
+                  options, produces artifacts, and comments should be lifted to this
+                  type FIXME: if requisiteStageRefIds is not validated, pipeline will
+                  no longer render correctly in UI'
+                properties:
+                  bakeManifest:
+                    description: 'BakeManifest represents a bake manifest stage in
+                      Spinnaker. NOTE: I suspect this only supports `helm2` style
+                      deployments right now. NOTE: notifications currently not supported
+                      for this stage.'
+                    properties:
+                      comments:
+                        type: string
+                      completeOtherBranchesThenFail:
+                        type: boolean
+                      continuePipeline:
+                        type: boolean
+                      evaluateOverrideExpressions:
+                        type: boolean
+                      expectedArtifacts:
+                        items:
+                          description: Artifact TODO
+                          properties:
+                            defaultArtifact:
+                              properties:
+                                artifactAccount:
+                                  type: string
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                reference:
+                                  type: string
+                                type:
+                                  type: string
+                                version:
+                                  type: string
+                              type: object
+                            displayName:
+                              type: string
+                            id:
+                              type: string
+                            matchArtifact:
+                              properties:
+                                artifactAccount:
+                                  type: string
+                                id:
+                                  type: string
+                                name:
+                                  type: string
+                                string:
+                                  type: string
+                                type:
+                                  type: string
+                                version:
+                                  type: string
+                              type: object
+                            useDefaultArtifact:
+                              type: boolean
+                            usePriorArtifact:
+                              type: boolean
+                          required:
+                          - displayName
+                          - id
+                          type: object
+                        type: array
+                      failOnFailedExpressions:
+                        type: boolean
+                      failPipeline:
+                        type: boolean
+                      inputArtifacts:
+                        items:
+                          description: ArtifactReference TODO doesn't seem to be working...?
+                          properties:
+                            account:
+                              type: string
+                            id:
+                              type: string
+                          required:
+                          - account
+                          - id
+                          type: object
+                        type: array
+                      namespace:
+                        type: string
+                      outputName:
+                        type: string
+                      overrides:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      rawOverrides:
+                        type: boolean
+                      restrictExecutionDuringTimeWindow:
+                        type: boolean
+                      restrictedExecutionWindow:
+                        description: RestrictedExecutionWindow TODO description
+                        properties:
+                          days:
+                            items:
+                              type: integer
+                            type: array
+                          jitter:
+                            description: Jitter TODO description
+                            properties:
+                              enabled:
+                                type: boolean
+                              maxDelay:
+                                type: integer
+                              minDelay:
+                                type: integer
+                              skipManual:
+                                type: boolean
+                            type: object
+                          whitelist:
+                            items:
+                              description: WhiteListWindow TODO description
+                              properties:
+                                endHour:
+                                  type: integer
+                                endMin:
+                                  type: integer
+                                startHour:
+                                  type: integer
+                                startMin:
+                                  type: integer
+                              type: object
+                            type: array
+                        type: object
+                      skipWindowText:
+                        type: string
+                      stageEnabled:
+                        description: StageEnabled TODO this will need to change
+                        properties:
+                          expression:
+                            type: string
+                          type:
+                            type: string
+                        required:
+                        - expression
+                        - type
+                        type: object
+                      templateRenderer:
+                        type: string
+                    type: object
+                  checkPreconditions:
+                    description: DeleteManifest removes a manifest or a group of manifests
+                      from a target Spinnaker cluster based on names, deployment version
+                      or labels.
+                    properties:
+                      preconditions:
+                        items:
+                          description: Precondition TODO likely needs to be refined
+                            to support more than expressions
+                          properties:
+                            context:
+                              properties:
+                                expression:
+                                  type: string
+                                failureMessage:
+                                  type: string
+                              required:
+                              - expression
+                              type: object
+                            failPipeline:
+                              type: boolean
+                            type:
+                              type: string
+                          required:
+                          - context
+                          - failPipeline
+                          - type
+                          type: object
+                        type: array
+                    type: object
+                  deleteManifest:
+                    description: ManualJudgment stage pauses pipeline execution until
+                      there is approval from a human through the UI or API call that
+                      allows the execution to proceed.
+                    properties:
+                      account:
+                        type: string
+                      app:
+                        type: string
+                      cloudProvider:
+                        type: string
+                      location:
+                        type: string
+                      manifestName:
+                        type: string
+                      mode:
+                        type: string
+                      options:
+                        properties:
+                          cascading:
+                            type: boolean
+                          gracePeriodSeconds:
+                            type: integer
+                        type: object
+                    required:
+                    - account
+                    - app
+                    - cloudProvider
+                    - location
+                    - manifestName
+                    - mode
+                    type: object
+                  deployManifest:
+                    description: CheckPreconditions allows you to test values from
+                      the pipeline's context to determine wether to proceed, pause,
+                      or terminate the pipeline execution
+                    properties:
+                      account:
+                        type: string
+                      cloudProvider:
+                        type: string
+                      completeOtherBranchesThenFail:
+                        type: boolean
+                      continuePipeline:
+                        type: boolean
+                      failPipeline:
+                        type: boolean
+                      manifestArtifactAccount:
+                        type: string
+                      manifestArtifactId:
+                        type: string
+                      moniker:
+                        properties:
+                          app:
+                            type: string
+                        required:
+                        - app
+                        type: object
+                      skipExpressionEvaluation:
+                        type: boolean
+                      source:
+                        type: string
+                    required:
+                    - account
+                    - cloudProvider
+                    - completeOtherBranchesThenFail
+                    - continuePipeline
+                    - failPipeline
+                    - manifestArtifactAccount
+                    - manifestArtifactId
+                    - moniker
+                    - source
+                    type: object
+                  findArtifactsFromResource:
+                    description: BakeManifest renders a Kubernetes manifest to be
+                      applied to a target cluster at a later stage. The manifests
+                      can be rendered using HELM2 or Kustomize.
+                    properties:
+                      account:
+                        type: string
+                      app:
+                        type: string
+                      cloudProvider:
+                        type: string
+                      location:
+                        type: string
+                      manifestName:
+                        type: string
+                      mode:
+                        type: string
+                    type: object
+                  manualJudgment:
+                    description: ManualJudgment TODO description
+                    properties:
+                      comments:
+                        type: string
+                      failPipeline:
+                        type: boolean
+                      instructions:
+                        type: string
+                      judgmentInputs:
+                        items:
+                          description: JudgmentInput TODO description
+                          properties:
+                            value:
+                              type: string
+                          required:
+                          - value
+                          type: object
+                        type: array
+                      name:
+                        type: string
+                      notifications:
+                        items:
+                          description: ManualJudgmentNotification TODO description
+                          properties:
+                            address:
+                              type: string
+                            level:
+                              type: string
+                            message:
+                              description: JudgmentMessage TODO description
+                              properties:
+                                manualJudgmentContinue:
+                                  description: JudgmentMessageValue TODO description
+                                  properties:
+                                    text:
+                                      type: string
+                                  required:
+                                  - text
+                                  type: object
+                                manualJudgmentStop:
+                                  description: JudgmentMessageValue TODO description
+                                  properties:
+                                    text:
+                                      type: string
+                                  required:
+                                  - text
+                                  type: object
+                              type: object
+                            type:
+                              type: string
+                            when:
+                              items:
+                                description: JudgmentState TODO description
+                                enum:
+                                - ManualJudgmentState
+                                - ManualJudgmentContinueState
+                                - ManualJudgmentStopState
+                                type: string
+                              type: array
+                          required:
+                          - type
+                          type: object
+                        type: array
+                      restrictExecutionDuringTimeWindow:
+                        type: boolean
+                      restrictedExecutionWindow:
+                        description: RestrictedExecutionWindow TODO description
+                        properties:
+                          days:
+                            items:
+                              type: integer
+                            type: array
+                          jitter:
+                            description: Jitter TODO description
+                            properties:
+                              enabled:
+                                type: boolean
+                              maxDelay:
+                                type: integer
+                              minDelay:
+                                type: integer
+                              skipManual:
+                                type: boolean
+                            type: object
+                          whitelist:
+                            items:
+                              description: WhiteListWindow TODO description
+                              properties:
+                                endHour:
+                                  type: integer
+                                endMin:
+                                  type: integer
+                                startHour:
+                                  type: integer
+                                startMin:
+                                  type: integer
+                              type: object
+                            type: array
+                        type: object
+                      sendNotifications:
+                        type: boolean
+                      skipWindowText:
+                        type: string
+                      stageTimeoutMs:
+                        type: integer
+                    type: object
+                  name:
+                    description: Name is the name given to this stage.
+                    type: string
+                  refId:
+                    description: RefID is the position in the pipeline graph that
+                      this stage should live. Usually monotonically increasing for
+                      a pipeline.
+                    type: string
+                  requisiteStageRefIds:
+                    description: RequisiteStageRefIds A list of RefIDs that are required
+                      before this stage can run.
+                    items:
+                      type: string
+                    type: array
+                  stageEnabled:
+                    description: StageEnabled TODO this will need to change
+                    properties:
+                      expression:
+                        type: string
+                      type:
+                        type: string
+                    required:
+                    - expression
+                    - type
+                    type: object
+                  type:
+                    description: StageUnionType is an alias for the type name of the
+                      pipeline's stage.
+                    enum:
+                    - BakeManifest
+                    - FindArtifactsFromResource
+                    - ManualJudgment
+                    - DeleteManifest
+                    - CheckPreconditions
+                    - DeployManifest
+                    type: string
+                required:
+                - name
+                - refId
+                - type
+                type: object
+              type: array
+          required:
+          - stages
+          type: object
+        status:
+          description: PipelineStatus defines the observed state of Pipeline
+          properties:
+            id:
+              description: ID represents the Spinnaker generated id for this pipeline
+              type: string
+            lastConfigured:
+              description: LastConfigured represents the last time the operator updated
+                this pipeline in Spinnaker.
+              format: date-time
+              type: string
+            phase:
+              description: Phase is the current phase of pipeline reconciliation.
+              enum:
+              - ErrorNotFound
+              - Creating
+              - ErrorFailedToCreate
+              - Created
+              - Deleting
+              - ErrorDeletingPipeline
+              - Updated
+              - ErrorUpdatingPipeline
+              type: string
+            url:
+              type: string
+          type: object
+      type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

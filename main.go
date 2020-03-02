@@ -54,6 +54,13 @@ func main() {
 		o.Development = true
 	}))
 
+	setupLog.Info("Initializing PaCRD configuration")
+	pacrdConfig, err := InitConfig()
+	if err != nil {
+		setupLog.Error(err, "Unable to parse configuration")
+		os.Exit(1)
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
 		MetricsBindAddress: metricsAddr,
@@ -67,16 +74,27 @@ func main() {
 
 	// TODO fix this shit
 	spinnakerClient := plank.New()
-	spinnakerClient.URLs["orca"] = "http://localhost:8083"
-	spinnakerClient.URLs["front50"] = "http://localhost:8080"
+	spinnakerClient.URLs["orca"] = pacrdConfig.SpinnakerServices.Orca
+	spinnakerClient.URLs["front50"] = pacrdConfig.SpinnakerServices.Front50
 
 	if err = (&controllers.ApplicationReconciler{
 		Client:          mgr.GetClient(),
 		Log:             ctrl.Log.WithName("controllers").WithName("Application"),
 		Scheme:          mgr.GetScheme(),
 		SpinnakerClient: spinnakerClient,
+		Recorder:        mgr.GetEventRecorderFor("applications"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Application")
+		os.Exit(1)
+	}
+	if err = (&controllers.PipelineReconciler{
+		Client:          mgr.GetClient(),
+		Log:             ctrl.Log.WithName("controllers").WithName("Pipeline"),
+		Scheme:          mgr.GetScheme(),
+		SpinnakerClient: spinnakerClient,
+		Recorder:        mgr.GetEventRecorderFor("pipelines"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
