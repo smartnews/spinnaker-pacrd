@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: armory/pacrd
-  newTag: bf1506d
+  newTag: ca89564-dirty
