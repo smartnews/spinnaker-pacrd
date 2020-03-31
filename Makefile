@@ -1,7 +1,7 @@
 
 # Image URL to use all building/pushing image targets
 RELEASE ?= ""  # Must be set at runtime
-IMAGE_VERSION ?= $(shell git describe --always)
+IMAGE_VERSION ?= $(shell git describe --always --dirty)
 IMG ?= armory/pacrd:${IMAGE_VERSION}
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
@@ -44,6 +44,8 @@ deploy: manifests
 generate-public-manifest: manifests
 	cd config/manager && kustomize edit set image controller=${IMG}
 	kustomize build config/default > pacrd-${RELEASE}.yaml
+	git add config/manager
+	git commit -m "chore(config): update manager version"
 
 # Publish the publicly consumable manifest to one of our properties
 publish-public-manifest: generate-public-manifest
@@ -80,6 +82,8 @@ docker-build: test
 # Push the docker image
 docker-push:
 	docker push ${IMG}
+
+release: docker-build docker-push generate-public-manifest publish-public-manifest
 
 # find or download controller-gen
 # download controller-gen if necessary
