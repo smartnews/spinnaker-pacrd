@@ -220,12 +220,12 @@ func (in *CheckPreconditions) DeepCopyInto(out *CheckPreconditions) {
 	*out = *in
 	if in.Preconditions != nil {
 		in, out := &in.Preconditions, &out.Preconditions
-		*out = new([]Precondition)
-		if **in != nil {
-			in, out := *in, *out
-			*out = make([]Precondition, len(*in))
-			for i := range *in {
-				(*in)[i].DeepCopyInto(&(*out)[i])
+		*out = make([]*Precondition, len(*in))
+		for i := range *in {
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(Precondition)
+				(*in).DeepCopyInto(*out)
 			}
 		}
 	}
@@ -516,9 +516,13 @@ func (in *ManualJudgment) DeepCopyInto(out *ManualJudgment) {
 	*out = *in
 	if in.Notifications != nil {
 		in, out := &in.Notifications, &out.Notifications
-		*out = make([]ManualJudgmentNotification, len(*in))
+		*out = make([]*ManualJudgmentNotification, len(*in))
 		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
+			if (*in)[i] != nil {
+				in, out := &(*in)[i], &(*out)[i]
+				*out = new(ManualJudgmentNotification)
+				(*in).DeepCopyInto(*out)
+			}
 		}
 	}
 	if in.JudgmentInputs != nil {
