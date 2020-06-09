@@ -3,7 +3,7 @@
 ### {{ .Name.Name }} {{ if eq .Kind "Alias" }}(<code>{{.Underlying}}</code> alias){{ end -}}
 
 {{ with (typeReferences .) }}
-(__Appears on:__
+(<b>Appears on:</b>
 {{- $prev := "" -}}
 {{- range . -}}
     {{- if $prev -}}, {{ end -}}

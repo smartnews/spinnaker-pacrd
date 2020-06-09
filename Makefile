@@ -81,7 +81,7 @@ generate-docs: docs/config.json docs/template/
 		-template-dir docs/template/ \
 		-config docs/config.json \
 		-api-dir github.com/armory-io/pacrd/api/v1alpha1/ \
-		-out-file $(DOCS_PROJECT)/_spinnaker/pacrd-crd-docs.md
+		-out-file $(DOCS_PROJECT)/spinnaker/pacrd-crd-docs.md
 	rm api/v1alpha1/doc.go
 
 install-doc-generator:

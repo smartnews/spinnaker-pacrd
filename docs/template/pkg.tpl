@@ -1,19 +1,14 @@
 {{ define "packages" }}
 ---
-layout: post
 title: PaCRD CRD Documentation
-order: 172
+linkTitle: PaCRD CRD Doc
+weight: 172
 ---
 
-{% include components/experimental_feature.html %}
-
-{:.no_toc}
-* This is a placeholder for an unordered list that will be replaced with ToC. To exclude a header, add {:.no_toc} after it.
-{:toc}
+{{ "{{< include 'experimental-feature.html' >}}" }}
 
 {{ range .packages }}
 # {{ packageDisplayName . -}}
-
     {{ with (index .GoPackages 0 )}}
         {{ with .DocComments }}
         <p>
@@ -21,7 +16,6 @@ order: 172
         </p>
         {{ end }}
     {{ end }}
-
 ## Resource Types:
     <ul>
     {{- range (visibleTypes (sortedTypes .Types)) -}}
@@ -36,7 +30,7 @@ order: 172
     {{ range (visibleTypes (sortedTypes .Types))}}
         {{ template "type" .  }}
     {{ end }}
-    <hr/>
+
 {{ end }}
 
 <p><em>
