@@ -1,23 +1,13 @@
 package v1alpha1
 
 import (
+	"encoding/json"
 	"fmt"
-	"reflect"
-	"strings"
-
 	"github.com/fatih/structs"
-	"github.com/iancoleman/strcase"
-	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// StageUnionType is an alias for the type name of the pipeline's stage.
-// +kubebuilder:validation:Enum=BakeManifest;FindArtifactsFromResource;ManualJudgment;DeleteManifest;CheckPreconditions;DeployManifest;Webhook;UndoRolloutManifest
-type StageUnionType string
-
-// Stage is a union type that encompasses strongly typed stage defnitions.
-type StageUnion struct {
-	// Type represents the type of stage that is described.
-	Type StageUnionType `json:"type"`
+type Stage struct {
 	// Name is the name given to this stage.
 	Name string `json:"name"`
 	// RefID is the position in the pipeline graph that this stage should live. Usually monotonically increasing for a pipeline.
@@ -34,39 +24,283 @@ type StageUnion struct {
 	// RestrictExecutionDuringTimeWindow provides the ability to restrict the hours during which this stage can run.
 	// +optional
 	RestrictExecutionDuringTimeWindow bool `json:"restrictExecutionDuringTimeWindow,omitempty"`
+
 	// RestrictedExecutionWindow provides the ability to restrict the hours during which this stage can run.
 	// +optional
-	RestrictedExecutionWindow `json:"restrictedExecutionWindow"`
+	RestrictedExecutionWindow RestrictedExecutionWindow `json:"restrictedExecutionWindow,omitempty"`
 	// SkipWindowText is the text to display when this stage is skipped.
 	// +optional
-	SkipWindowText string `json:"skipWindowText"`
-	//BakeManifest renders a Kubernetes manifest to be applied to a target cluster at a later stage. The manifests can be rendered using HELM2 or Kustomize.
+	SkipWindowText string `json:"skipWindowText,omitempty"`
+}
+
+func (su *MatchStage) GetStage() interface{} {
+	var s SpinnakerMatchStage
+	switch su.Type {
+	case "bakeManifest":
+		s = &BakeManifest{Type: su.Type}
+	case "findArtifactsFromResource":
+		s = &FindArtifactsFromResource{Type: su.Type}
+	case "manualJudgment":
+		s = &ManualJudgment{Type: su.Type}
+	case "deleteManifest":
+		s = &DeleteManifest{Type: su.Type}
+	case "undoRolloutManifest":
+		s = &UndoRolloutManifest{Type: su.Type}
+	case "checkPreconditions":
+		s = &CheckPreconditions{Type: su.Type}
+	case "deployManifest":
+		s = &DeployManifest{Type: su.Type}
+	case "webhook":
+		s = &Webhook{Type: su.Type}
+	default:
+		s = &UnknownStage{Type: su.Type}
+	}
+	return s
+}
+
+func (su *MatchStage) MarshallToMap() map[string]interface{} {
+	s := structs.New(su)
+	s.TagName = "json"
+	return s.Map()
+}
+
+func (su *MatchStage) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, su)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// StageEnabled represents whether this stage is active in a pipeline graph.
+type StageEnabled struct {
+	Type       string `json:"type"`
+	Expression string `json:"expression"`
+}
+
+// RestrictedExecutionWindow TODO description
+type RestrictedExecutionWindow struct {
+	Days      []int `json:"days,omitempty"` // TODO candidate for further validation
+	Jitter    `json:"jitter,omitempty"`
+	WhiteList []WhiteListWindow `json:"whitelist,omitempty"`
+}
+
+// WhiteListWindow TODO description
+type WhiteListWindow struct {
+	EndHour   int `json:"endHour,omitempty"`
+	EndMin    int `json:"endMin,omitempty"`
+	StartHour int `json:"startHour,omitempty"`
+	StartMin  int `json:"startMin,omitempty"`
+}
+
+// Jitter TODO description
+type Jitter struct {
+	Enabled    bool `json:"enabled,omitempty"`
+	MaxDelay   int  `json:"maxDelay,omitempty"`
+	MinDelay   int  `json:"minDelay,omitempty"`
+	SkipManual bool `json:"skipManual,omitempty"`
+}
+
+// BakeManifest represents a bake manifest stage in Spinnaker.
+// NOTE: I suspect this only supports `helm2` style deployments right now.
+// NOTE: notifications currently not supported for this stage.
+type BakeManifest struct {
+	Stage `json:",inline"`
+
+	// Name is the name given to this stage.
+	Type string `json:"type"`
+
 	// +optional
-	BakeManifest `json:"bakeManifest,omitempty"`
+	FailOnFailedExpressions bool `json:"failOnFailedExpressions,omitempty"`
 	// +optional
-	FindArtifactsFromResource `json:"findArtifactsFromResource,omitempty"`
-	//ManualJudgment stage pauses pipeline execution until there is approval from a human through the UI or API call that allows the execution to proceed.
+	FailPipeline *bool `json:"failPipeline,omitempty"`
 	// +optional
-	ManualJudgment `json:"manualJudgment,omitempty"`
-	//DeleteManifest removes a manifest or a group of manifests from a target Spinnaker cluster based on names, deployment version or labels.
+	ContinuePipeline *bool `json:"continuePipeline,omitempty"`
 	// +optional
-	DeleteManifest `json:"deleteManifest,omitempty"`
-	// CheckPreconditions allows you to test values from the pipeline's context to determine wether to proceed, pause, or terminate the pipeline execution
+	CompleteOtherBranchesThenFail *bool `json:"completeOtherBranchesThenFail,omitempty"`
 	// +optional
-	CheckPreconditions `json:"checkPreconditions,omitempty"`
-	// DeployManifest deploys a Kubernetes manifest to a target Kubernetes cluster. Spinnaker will periodically check the status of the manifest to make sure the manifest converges on the target cluster until it reaches a timeout
+	Namespace string `json:"namespace,omitempty"`
 	// +optional
-	DeployManifest `json:"deployManifest,omitempty"`
-	//Webhook allows you to make quick API calls to an external system as part of a pipeline
+	EvaluateOverrideExpressions bool `json:"evaluateOverrideExpressions,omitempty"`
 	// +optional
-	Webhook `json:"webhook,omitempty"`
-	// UndoRolloutManifest rolls back a Kubernetes manifest to a previous version.
-	//+optional
-	UndoRolloutManifest `json:"undoRolloutManifest,omitempty"`
+	ExpectedArtifacts []Artifact `json:"expectedArtifacts,omitempty"`
+	// +optional
+	InputArtifacts []*ArtifactReference `json:"inputArtifacts,omitempty"`
+	// InputArtifact is used by the Kustomize variant of BakeManifest to pull in a single artifact.
+	// +optional
+	InputArtifact ArtifactReference `json:"inputArtifact,omitempty"`
+	// +optional
+	OutputName string `json:"outputName,omitempty"`
+	// +optional
+	Overrides map[string]string `json:"overrides,omitempty"`
+	// +optional
+	RawOverrides     bool   `json:"rawOverrides,omitempty"`
+	TemplateRenderer string `json:"templateRenderer,omitempty"`
+	// KustomizeFilePath is the relative path to the kustomize.yaml file in the given artifact.
+	// +optional
+	KustomizeFilePath string `json:"kustomizeFilePath,omitempty"`
+}
+
+func (bk *BakeManifest) MarshallToMap() map[string]interface{} {
+	s := structs.New(bk)
+	s.TagName = "json"
+	stage := s.Map()
+	m, _ := StructToMap(bk.Stage)
+	for key, element := range m {
+		stage[key] = element
+	}
+	return stage
+}
+
+func (bk *BakeManifest) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, bk)
+
+	if err != nil {
+		return err
+	}
+
+	if bk.Namespace == "" {
+		return fmt.Errorf("namespace must be defined for this stage")
+	}
+
+	return nil
+}
+
+type CheckPreconditions struct {
+	Stage `json:",inline"`
+	Type  string `json:"type"`
+	// +optional
+	Preconditions []*Precondition `json:"preconditions,omitempty"`
+}
+
+// Precondition TODO likely needs to be refined to support more than expressions
+type Precondition struct {
+	Context      `json:"context"`
+	FailPipeline bool   `json:"failPipeline"`
+	Type         string `json:"type"`
+}
+
+type Context struct {
+	Expression string `json:"expression"`
+	// +optional
+	FailureMessage *string `json:"failureMessage,omitempty"`
+}
+
+func (cp *CheckPreconditions) MarshallToMap() map[string]interface{} {
+	s := structs.New(cp)
+	s.TagName = "json"
+	stage := s.Map()
+	m, _ := StructToMap(cp.Stage)
+	for key, element := range m {
+		stage[key] = element
+	}
+	return stage
+}
+
+func (cp *CheckPreconditions) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, cp)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type DeleteManifest struct {
+	Stage         `json:",inline"`
+	Type          string `json:"type"`
+	Account       string `json:"account"`
+	App           string `json:"app"`
+	CloudProvider string `json:"cloudProvider"`
+	Location      string `json:"location"`
+	// +optional
+	//This should be fixed to use type DeleteManifestMode
+	DeleteManifestMode `json:"mode,omitempty"`
+	//This should be fixed to use type SpinnakerKind
+	// +optional
+	KubernetesKind `json:"kind,omitempty"`
+	// +optional
+	TargetName string `json:"targetName,omitempty"`
+	// +optional
+	LabelSelector `json:"labelSelectors,omitempty"`
+	// +optional
+	Options *Options `json:"options,omitempty"`
+	// +optional
+	Cluster string `json:"cluster,omitempty"`
+	// +optional
+	TargetCriteria `json:"criteria,omitempty"`
+
+	// +optional
+	Kinds []KubernetesKind `json:"kinds,omitempty"`
+	//Kinds []SpinnakerKind `json:"kinds,omitempty"`
+
+}
+
+//Not sure where these values are in the service, need to find more but for the moment this are all possible
+// +kubebuilder:validation:Enum=static;dynamic;label
+type DeleteManifestMode string
+
+const (
+	// ChooseStaticTarget selector for delete manifest
+	ChooseStaticTarget DeleteManifestMode = "static"
+	// ChooseTargetDynamically selector for delete manifest
+	ChooseTargetDynamically DeleteManifestMode = "dynamic"
+	// MatchTargetLabel selector for delete manifest
+	MatchTargetLabel DeleteManifestMode = "label"
+)
+
+//These values can be found in: /clouddriver/clouddriver-kubernetes-v2/src/main/java/com/netflix/spinnaker/clouddriver/kubernetes/v2/controllers/ManifestController.java
+// +kubebuilder:validation:Enum=oldest;smallest;newest;largest;second_newest
+type TargetCriteria string
+
+type LabelSelector struct {
+	Selector []Selector `json:"selectors,omitempty"`
+}
+type Options struct {
+	// +optional
+	Cascading bool `json:"cascading"`
+	// +optional
+	GracePeriodSeconds int `json:"gracePeriodSeconds,omitempty"`
+}
+
+//This value comes from: /clouddriver/clouddriver-kubernetes-v2/src/main/java/com/netflix/spinnaker/clouddriver/kubernetes/v2/security/KubernetesSelector.java
+// +kubebuilder:validation:Enum=ANY;EQUALS;NOT_EQUALS;CONTAINS;NOT_CONTAINS;EXISTS;NOT_EXISTS
+type SelectorsKind string
+
+type Selector struct {
+	Key           string `json:"key,omitempty"`
+	SelectorsKind `json:"kind,omitempty"`
+	Values        []string `json:"values,omitempty"`
+}
+
+func (dm *DeleteManifest) MarshallToMap() map[string]interface{} {
+	s := structs.New(dm)
+	s.TagName = "json"
+	stage := s.Map()
+	m, _ := StructToMap(dm.Stage)
+	for key, element := range m {
+		stage[key] = element
+	}
+	return stage
+}
+
+func (dm *DeleteManifest) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, dm)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // DeployManifest deploys a Kubernetes manifest to a target Kubernetes cluster. Spinnaker will periodically check the status of the manifest to make sure the manifest converges on the target cluster until it reaches a timeout
 type DeployManifest struct {
+	Stage `json:",inline"`
+	Type  string `json:"type"`
 	// Account is the configured account to deploy to.
 	Account string `json:"account"`
 	// CloudProvider is the type of cloud provider used by the selected account.
@@ -137,127 +371,31 @@ type Moniker struct {
 	App string `json:"app"`
 }
 
-type CheckPreconditions struct {
-	// +optional
-	Preconditions []*Precondition `json:"preconditions,omitempty"`
+func (dm *DeployManifest) MarshallToMap() map[string]interface{} {
+	s := structs.New(dm)
+	s.TagName = "json"
+	stage := s.Map()
+	m, _ := StructToMap(dm.Stage)
+	for key, element := range m {
+		stage[key] = element
+	}
+	return stage
 }
 
-// Precondition TODO likely needs to be refined to support more than expressions
-type Precondition struct {
-	Context      `json:"context"`
-	FailPipeline bool   `json:"failPipeline"`
-	Type         string `json:"type"`
-}
+func (dm *DeployManifest) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, dm)
 
-type Context struct {
-	Expression string `json:"expression"`
-	// +optional
-	FailureMessage *string `json:"failureMessage,omitempty"`
-}
+	if err != nil {
+		return err
+	}
 
-//Not sure where these values are in the service, need to find more but for the moment this are all possible
-// +kubebuilder:validation:Enum=static;dynamic;label
-type DeleteManifestMode string
-
-const (
-	// ChooseStaticTarget selector for delete manifest
-	ChooseStaticTarget DeleteManifestMode = "static"
-	// ChooseTargetDynamically selector for delete manifest
-	ChooseTargetDynamically DeleteManifestMode = "dynamic"
-	// MatchTargetLabel selector for delete manifest
-	MatchTargetLabel DeleteManifestMode = "label"
-)
-
-//These values can be found in: /clouddriver/clouddriver-kubernetes-v2/src/main/java/com/netflix/spinnaker/clouddriver/kubernetes/v2/controllers/ManifestController.java
-// +kubebuilder:validation:Enum=oldest;smallest;newest;largest;second_newest
-type TargetCriteria string
-
-//This value comes from: /clouddriver/clouddriver-kubernetes-v2/src/main/java/com/netflix/spinnaker/clouddriver/kubernetes/v2/security/KubernetesSelector.java
-// +kubebuilder:validation:Enum=ANY;EQUALS;NOT_EQUALS;CONTAINS;NOT_CONTAINS;EXISTS;NOT_EXISTS
-type SelectorsKind string
-
-type Selector struct {
-	Key           string `json:"key,omitempty"`
-	SelectorsKind `json:"kind,omitempty"`
-	Values        []string `json:"values,omitempty"`
-}
-
-type LabelSelector struct {
-	Selector []Selector `json:"selectors,omitempty"`
-}
-
-type DeleteManifest struct {
-	Account       string `json:"account"`
-	App           string `json:"app"`
-	CloudProvider string `json:"cloudProvider"`
-	Location      string `json:"location"`
-	// +optional
-	//This should be fixed to use type DeleteManifestMode
-	DeleteManifestMode `json:"mode,omitempty"`
-	//This should be fixed to use type SpinnakerKind
-	// +optional
-	KubernetesKind `json:"kind,omitempty"`
-	// +optional
-	TargetName string `json:"targetName,omitempty"`
-	// +optional
-	LabelSelector `json:"labelSelectors,omitempty"`
-	// +optional
-	Options *Options `json:"options,omitempty"`
-	// +optional
-	Cluster string `json:"cluster,omitempty"`
-	// +optional
-	TargetCriteria `json:"criteria,omitempty"`
-
-	// +optional
-	Kinds []KubernetesKind `json:"kinds,omitempty"`
-	//Kinds []SpinnakerKind `json:"kinds,omitempty"`
-
-}
-
-type Options struct {
-	// +optional
-	Cascading bool `json:"cascading"`
-	// +optional
-	GracePeriodSeconds int `json:"gracePeriodSeconds,omitempty"`
-}
-
-// BakeManifest represents a bake manifest stage in Spinnaker.
-// NOTE: I suspect this only supports `helm2` style deployments right now.
-// NOTE: notifications currently not supported for this stage.
-type BakeManifest struct {
-	// +optional
-	FailOnFailedExpressions bool `json:"failOnFailedExpressions,omitempty"`
-	// +optional
-	FailPipeline *bool `json:"failPipeline,omitempty"`
-	// +optional
-	ContinuePipeline *bool `json:"continuePipeline,omitempty"`
-	// +optional
-	CompleteOtherBranchesThenFail *bool `json:"completeOtherBranchesThenFail,omitempty"`
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-	// +optional
-	EvaluateOverrideExpressions bool `json:"evaluateOverrideExpressions,omitempty"`
-	// +optional
-	ExpectedArtifacts []Artifact `json:"expectedArtifacts,omitempty"`
-	// +optional
-	InputArtifacts []*ArtifactReference `json:"inputArtifacts,omitempty"`
-	// InputArtifact is used by the Kustomize variant of BakeManifest to pull in a single artifact.
-	// +optional
-	InputArtifact ArtifactReference `json:"inputArtifact,omitempty"`
-	// +optional
-	OutputName string `json:"outputName,omitempty"`
-	// +optional
-	Overrides map[string]string `json:"overrides,omitempty"`
-	// +optional
-	RawOverrides     bool   `json:"rawOverrides,omitempty"`
-	TemplateRenderer string `json:"templateRenderer,omitempty"`
-	// KustomizeFilePath is the relative path to the kustomize.yaml file in the given artifact.
-	// +optional
-	KustomizeFilePath string `json:"kustomizeFilePath,omitempty"`
+	return nil
 }
 
 // FindArtifactsFromResource represents the stage of the same name in Spinnaker.
 type FindArtifactsFromResource struct {
+	Stage         `json:",inline"`
+	Type          string `json:"type"`
 	Account       string `json:"account"`
 	App           string `json:"app,omitempty"`
 	CloudProvider string `json:"cloudProvider"`
@@ -266,15 +404,35 @@ type FindArtifactsFromResource struct {
 	ManifestName  string `json:"manifestName"`
 }
 
-// StageEnabled represents whether this stage is active in a pipeline graph.
-type StageEnabled struct {
-	Type       string `json:"type"`
-	Expression string `json:"expression"`
+func (fafr *FindArtifactsFromResource) MarshallToMap() map[string]interface{} {
+	s := structs.New(fafr)
+	s.TagName = "json"
+	stage := s.Map()
+	m, _ := StructToMap(fafr.Stage)
+	for key, element := range m {
+		stage[key] = element
+	}
+	return stage
+}
+
+func (fafr *FindArtifactsFromResource) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, fafr)
+
+	if err != nil {
+		return err
+	}
+
+	if fafr.Account == "" {
+		return fmt.Errorf("account must be defined for this stage")
+	}
+
+	return nil
 }
 
 // ManualJudgment TODO description
 type ManualJudgment struct {
-	Name           string `json:"name,omitempty"`
+	Stage          `json:",inline"`
+	Type           string `json:"type"`
 	FailPipeline   bool   `json:"failPipeline,omitempty"`
 	Instructions   string `json:"instructions,omitempty"`
 	StageTimeoutMs int    `json:"stageTimeoutMs,omitempty"`
@@ -324,27 +482,92 @@ const (
 	ManualJudgmentStopState JudgmentState = "manualJudgmentStop"
 )
 
-// RestrictedExecutionWindow TODO description
-type RestrictedExecutionWindow struct {
-	Days      []int `json:"days,omitempty"` // TODO candidate for further validation
-	Jitter    `json:"jitter,omitempty"`
-	WhiteList []WhiteListWindow `json:"whitelist,omitempty"`
+func (mj *ManualJudgment) MarshallToMap() map[string]interface{} {
+	s := structs.New(mj)
+	s.TagName = "json"
+	stage := s.Map()
+	m, _ := StructToMap(mj.Stage)
+	for key, element := range m {
+		stage[key] = element
+	}
+	return stage
 }
 
-// WhiteListWindow TODO description
-type WhiteListWindow struct {
-	EndHour   int `json:"endHour,omitempty"`
-	EndMin    int `json:"endMin,omitempty"`
-	StartHour int `json:"startHour,omitempty"`
-	StartMin  int `json:"startMin,omitempty"`
+func (fafr *ManualJudgment) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, fafr)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// Jitter TODO description
-type Jitter struct {
-	Enabled    bool `json:"enabled,omitempty"`
-	MaxDelay   int  `json:"maxDelay,omitempty"`
-	MinDelay   int  `json:"minDelay,omitempty"`
-	SkipManual bool `json:"skipManual,omitempty"`
+// UndoRolloutManifestMode is the means for undoing a manifest rollout.
+// +kubebuilder:validation:Enum=static
+type UndoRolloutManifestMode string
+
+const (
+	// UndoRolloutManifestStaticMode .
+	UndoRolloutManifestStaticMode UndoRolloutManifestMode = "static"
+)
+
+// UndoRolloutManifest is a stage that rolls back a manifest.
+type UndoRolloutManifest struct {
+	Stage            `json:",inline"`
+	Type             string `json:"type"`
+	Account          string `json:"account"`
+	CloudProvider    string `json:"cloudProvider"`
+	Location         string `json:"location"`
+	NumRevisionsBack int    `json:"numRevisionsBack"`
+	// +optional
+	Mode UndoRolloutManifestMode `json:"mode,omitempty"`
+	// +optional
+	TargetName string `json:"targetName,omitempty"`
+	// +optional
+	Kind KubernetesKind `json:"kind,omitempty"`
+}
+
+func (urm *UndoRolloutManifest) MarshallToMap() map[string]interface{} {
+	s := structs.New(urm)
+	s.TagName = "json"
+	stage := s.Map()
+	m, _ := StructToMap(urm.Stage)
+	for key, element := range m {
+		stage[key] = element
+	}
+	return stage
+}
+
+func (urm *UndoRolloutManifest) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, urm)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// +kubebuilder:object:generate=false
+type UnknownStage struct {
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties"`
+}
+
+func (us *UnknownStage) MarshallToMap() map[string]interface{} {
+	us.Properties["type"] = us.Type // Persist the type we got at ingest time.
+
+	return us.Properties
+}
+
+func (us *UnknownStage) NewStageFromBytes(data []byte) error {
+	m := make(map[string]interface{})
+
+	err := json.Unmarshal(data, &m)
+	us.Properties = m
+
+	return err
 }
 
 // StatusUrlResolution will poll a status url to determine the progress of the stage.
@@ -354,6 +577,8 @@ type StatusUrlResolution string
 // Webhook represents a webhook stage in Spinnaker.
 // NOTE: notifications currently not supported for this stage.
 type Webhook struct {
+	Stage         `json:",inline"`
+	Type          string `json:"type"`
 	Url           string `json:"url,omitempty"`
 	WebhookMethod string `json:"method,omitempty"`
 	// +optional
@@ -398,212 +623,64 @@ type Webhook struct {
 	SignalCancellation bool `json:"signalCancellation,omitempty"`
 }
 
-// ToSpinnakerStage TODO description
-func (su StageUnion) ToSpinnakerStage() (map[string]interface{}, error) {
-	v := reflect.Indirect(reflect.ValueOf(&su))
-	crdType := v.FieldByName("Type").String()
-	crdStage := v.FieldByName(crdType).Interface() // TODO this causes a panic, fix it
+func (w *Webhook) MarshallToMap() map[string]interface{} {
+	s := structs.New(w)
+	s.TagName = "json"
 
-	var mapified map[string]interface{}
-
-	switch crdType {
-	case "BakeManifest":
-		crd := crdStage.(BakeManifest)
-		// If this value is lowercase the Spinnaker API apparently discards it.
-		crd.TemplateRenderer = strings.ToUpper(crd.TemplateRenderer)
-
-		s := structs.New(crd)
-		s.TagName = "json"
-		mapified = s.Map()
-
-		//When overrides is not present we need to sent it anyways, otherwise rosco fails
-		if overrideval, ok := mapified["overrides"]; !ok || overrideval == nil {
-			mapified["overrides"] = map[string]string{}
-		}
-
-		var mapifiedArtifacts []map[string]interface{}
-		for _, a := range crd.ExpectedArtifacts {
-			artifact, err := a.MarshallToMap()
-
-			if err != nil {
-				return map[string]interface{}{}, err // TODO wrap error
-			}
-
-			mapifiedArtifacts = append(mapifiedArtifacts, artifact)
-		}
-		mapified["expectedArtifacts"] = mapifiedArtifacts
-
-		fillSliceIfNeeded(mapified, "inputArtifacts")
-	case "FindArtifactsFromResource":
-		s := structs.New(crdStage.(FindArtifactsFromResource))
-		s.TagName = "json"
-		mapified = s.Map()
-	case "ManualJudgment":
-		s := structs.New(crdStage.(ManualJudgment))
-		s.TagName = "json"
-		mapified = s.Map()
-
-		if _, ok := mapified["failPipeline"]; !ok {
-			mapified["failPipeline"] = true
-		}
-
-		fillSliceIfNeeded(mapified, "notifications")
-		fillSliceIfNeeded(mapified, "judgmentInputs")
-	case "DeleteManifest":
-		s := structs.New(crdStage.(DeleteManifest))
-		s.TagName = "json"
-		mapified = s.Map()
-
-		//When we have static target the manifestname is the union of kind and targetName
-		if modevalue, ok := mapified["mode"]; ok && modevalue == ChooseStaticTarget {
-			manifestName, err := GenerateManifestName(mapified)
-
-			if err != nil {
-				return mapified, err
-			}
-
-			mapified["manifestName"] = manifestName
-		}
-		if _, ok := mapified["options"]; !ok {
-			optionsMap := make(map[string]interface{})
-			optionsMap["cascading"] = true
-			optionsMap["gracePeriodSeconds"] = nil
-			mapified["options"] = optionsMap
-		} else {
-			options := mapified["options"].(map[string]interface{})
-			if _, ok := options["cascading"]; !ok {
-				options["cascading"] = true
-			}
-			if _, ok := options["gracePeriodSeconds"]; !ok {
-				options["gracePeriodSeconds"] = nil
-			}
-		}
-	case "UndoRolloutManifest":
-		s := structs.New(crdStage.(UndoRolloutManifest))
-		s.TagName = "json"
-		mapified = s.Map()
-
-		//When we have static target the manifestname is the union of kind and targetName
-		if modevalue, ok := mapified["mode"]; ok && modevalue == UndoRolloutManifestStaticMode {
-			manifestName, err := GenerateManifestName(mapified)
-
-			if err != nil {
-				return mapified, err
-			}
-
-			mapified["manifestName"] = manifestName
-		}
-	case "CheckPreconditions":
-		s := structs.New(crdStage.(CheckPreconditions))
-		s.TagName = "json"
-		mapified = s.Map()
-
-		fillSliceIfNeeded(mapified, "preconditions")
-	case "DeployManifest":
-		s := structs.New(crdStage.(DeployManifest))
-		s.TagName = "json"
-		mapified = s.Map()
-
-		if _, ok := mapified["manifests"]; ok {
-			manifests := mapified["manifests"].([]string)
-			if len(manifests) > 0 {
-				var finalManifests []map[string]interface{}
-
-				for _, stringManifest := range manifests {
-					manifest := make(map[string]interface{})
-					err := yaml.Unmarshal([]byte(stringManifest), manifest)
-					if err != nil {
-						return mapified, err
-					}
-					finalManifests = append(finalManifests, manifest)
-				}
-				mapified["manifests"] = finalManifests
-			}
-		}
-	case "Webhook":
-		s := structs.New(crdStage.(Webhook))
-		s.TagName = "json"
-		mapified = s.Map()
-
-		err := rewriteStringValueFromMapToMapInterface("payload", mapified)
-		if err != nil {
-			return mapified, err
-		}
-		err = rewriteStringValueFromMapToMapInterface("cancelPayload", mapified)
-		if err != nil {
-			return mapified, err
-		}
-		err = rewriteStringValueFromMapToMapInterface("customHeaders", mapified)
-		if err != nil {
-			return mapified, err
-		}
-
+	stage := s.Map()
+	m, _ := StructToMap(w.Stage)
+	for key, element := range m {
+		stage[key] = element
 	}
 
-	if mapified == nil {
-		return mapified, fmt.Errorf("could not serialize stage")
+	err := rewriteStringValueFromMapToMapInterface("payload", stage)
+	if err != nil {
+		return stage
 	}
+	err = rewriteStringValueFromMapToMapInterface("cancelPayload", stage)
+	if err != nil {
+		return stage
+	}
+	err = rewriteStringValueFromMapToMapInterface("customHeaders", stage)
+	if err != nil {
+		return stage
+	}
+	return stage
 
-	// These fields belong to the top level StageUnion and need to be
-	// persisted to the final map[string]interface{} that `plank` uses.
-	mapified["type"] = strcase.ToLowerCamel(crdType)
-	mapified["name"] = su.Name
-	mapified["refId"] = su.RefID
-	mapified["comments"] = su.Comments
-	mapified["restrictExecutionDuringTimeWindow"] = su.RestrictExecutionDuringTimeWindow
-	mapified["restrictedExecutionWindow"] = su.RestrictedExecutionWindow
-	mapified["skipWindowText"] = su.SkipWindowText
-	if su.StageEnabled != nil {
-		s := structs.New(su.StageEnabled)
-		s.TagName = "json"
-		mapified["stageEnabled"] = s.Map()
-	}
-	// Always should be empty, not nil
-	if su.RequisiteStageRefIds == nil {
-		mapified["requisiteStageRefIds"] = []string{}
-	} else {
-		mapified["requisiteStageRefIds"] = su.RequisiteStageRefIds
-	}
-
-	return mapified, nil
 }
 
-func rewriteStringValueFromMapToMapInterface(field string, mapified map[string]interface{}) error {
-	if fieldString, ok := mapified[field].(string); ok {
-		payloadMap, err := stringToMapInterface(fieldString)
-		if err != nil {
-			return err
-		}
-		mapified[field] = payloadMap
+func (w *Webhook) NewStageFromBytes(data []byte) error {
+	err := json.Unmarshal(data, w)
+
+	if err != nil {
+		return err
 	}
+
 	return nil
 }
 
-func stringToMapInterface(stringToConvert string) (map[string]interface{}, error) {
-	valuesMap := make(map[string]interface{})
-	err := yaml.Unmarshal([]byte(stringToConvert), valuesMap)
-	return valuesMap, err
+// SpinnakerMatchStage represents TODO
+// +kubebuilder:object:generate=false
+type SpinnakerMatchStage interface {
+	NewStageFromBytes([]byte) error
+	MarshallToMap() map[string]interface{}
 }
 
-func fillSliceIfNeeded(mapified map[string]interface{}, fieldName string) {
-	//Fill if value is nil
-	fillSliceIfNilValue(mapified, fieldName)
-	//Fill if fieldname does not exists
-	fillSliceIfNotExists(mapified, fieldName)
+type MatchStage struct {
+	// +optional
+	Type string `json:"type" yaml:"type" protobuf:"bytes,2,name=type"`
+	// +optional
+	Properties runtime.RawExtension `json:"properties,omitempty"`
 }
 
-func fillSliceIfNilValue(mapified map[string]interface{}, fieldName string) bool {
-	if mapified[fieldName] == nil {
-		mapified[fieldName] = make([]interface{}, 0)
-		return true
-	}
-	return false
-}
+// ToSpinnakerStage TODO description
+func (su MatchStage) ToSpinnakerStage() (map[string]interface{}, error) {
 
-func fillSliceIfNotExists(mapified map[string]interface{}, fieldName string) bool {
-	if _, ok := mapified[fieldName]; !ok {
-		mapified[fieldName] = make([]interface{}, 0)
-		return true
-	}
-	return false
+	s := su.GetStage().(SpinnakerMatchStage)
+
+	err := s.NewStageFromBytes(su.Properties.Raw)
+
+	stage := s.MarshallToMap()
+	delete(stage, "Stage")
+	return stage, err
 }
