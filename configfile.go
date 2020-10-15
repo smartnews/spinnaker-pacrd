@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/armory/go-yaml-tools/pkg/tls/client"
+	"github.com/armory/go-yaml-tools/pkg/tls/server"
 	"github.com/spf13/viper"
 )
 
@@ -8,10 +10,15 @@ import (
 type PacrdConfig struct {
 	// NewRelicLicense (optional) license.
 	NewRelicLicense string
+	// NewRelicApp name (optional)
+	NewRelicAppName	string
 	// FiatServiceAccount (optional) the service account to annotate API calls with.
 	FiatServiceAccount string
 	// SpinnakerServices defines the location of Spinnaker services in your environment.
 	SpinnakerServices
+	//Server config for mTLS
+	Server	server.ServerConfig `json:"server" yaml:"server"`
+	Http    client.Config       `json:"http" yaml:"http"`
 }
 
 // SpinnakerServices represent the set of services that PaCRD must interface with.
@@ -29,6 +36,7 @@ func InitConfig() (PacrdConfig, error) {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("/opt/pacrd")
+	viper.SetDefault("NewRelicAppName", "pacrd")
 	viper.SetDefault("SpinnakerServices", SpinnakerServices{
 		Front50: "http://spin-front50:8080",
 		Orca:    "http://spin-orca:8083",
