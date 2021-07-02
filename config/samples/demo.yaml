@@ -37,7 +37,7 @@ spec:
       properties:
         refId: "1"
         name: Bake Simple Deploy
-        namespace: ***REMOVED***
+        namespace: foo
         evaluateOverrideExpressions: false
         outputName: cm
         inputArtifacts:

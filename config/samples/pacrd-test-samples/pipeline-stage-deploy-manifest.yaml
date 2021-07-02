@@ -36,7 +36,7 @@ spec:
           enabled: true
           options: 
             enableTraffic: true
-            namespace: ***REMOVED***
+            namespace: foo
             services: [ "servicea", "serviceb" ]
             strategy: redblack
     - type: deployManifest
