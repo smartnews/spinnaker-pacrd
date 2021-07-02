@@ -1,0 +1,188 @@
+---
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Application
+metadata:
+  name: core-entitlements
+spec:
+  email: fernando.freire@armory.io
+  description: Building a more complicated pipeline
+
+---
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: core-entitlements-for-env
+spec:
+  description: Foo bar baz
+  application: &app-name core-entitlements
+  parameterConfig:
+    - name: canary_deploy
+      default: "false"
+      hasOptions: false
+      label: canary_deploy
+      pinned: false
+      required: true
+    - name: env
+      default: d1-np
+      hasOptions: false
+      label: Environment
+      pinned: false
+      required: true
+    - name: cartversion
+      default: "1.0.380-20191017T1833"
+      hasOptions: false
+      label: Chart Version
+      pinned: false
+      required: true
+  expectedArtifacts:
+    - id: nonsensical-2 
+      defaultArtifact:
+        artifactAccount: &nav-helm-prod-virt kubernetes
+        name: core-entitlements
+        reference: *nav-helm-prod-virt
+        type: kubernetes/configMap
+        version: "${parameters.chartversion}"
+      displayName: core-entitlements-package
+      id: &nav-helm-prod-virt-id core-entitelements-helm-chart-1234
+      matchArtifact:
+        artifactAccount: *nav-helm-prod-virt
+        name: core-entitelements
+        reference: *nav-helm-prod-virt
+        type: kubernetes/configMap
+        version: "${parameters.chartversion}"
+      useDefaultArtifact: true
+      usePriorArtifact: false
+  stages:
+    - type: bakeManifest
+      properties:
+        refId: "1"
+        # requisiteStageRefIds: [ "16" ]
+        name: Bake Simple Deploy
+        namespace: ffreire
+        evaluateOverrideExpressions: false
+        outputName: bread
+        expectedArtifacts:
+          - id: nonsensical-3 
+            displayName: core-entitlements
+            useDefaultArtifact: false
+            #matchArtifact:
+              #kind: base64
+              #name: core-entitlements
+              #type: embedded/base64
+        templateRenderer: helm2
+        failPipeline: false
+        continuePipeline: false
+        completeOtherBranchesThenFail: true
+        overrides:
+          foo: bar
+        inputArtifacts:
+          - account: "kubernetes"
+            id: "669017b9-0a53-49c2-8b69-25c957e2d1ef"
+    - type: findArtifactsFromResource
+      properties:
+        refId: "3"
+        requisiteStageRefIds: [ "6" ]
+        name: Find Baseline
+        stageEnabled:
+          expression: "${parameters.canary_deploy} == true"
+          type: expression
+        account: "hlp-eks-spe-${parameters.env}-navnonprod-pdx"
+        app: &app-name
+        cloudProvider: kubernetes
+        location: entitlements
+        manifestName: deployment eks-spe-${parameters.env}-entitelements-core-entitelements
+        mode: static
+    - type: deleteManifest
+      properties:
+        name: Delete Baseline
+        refId: "5"
+        # requisiteStageRefIds: [ "9" ]
+        stageEnabled:
+          expression: "${parameters.canary_deploy} == true"
+          type: expression
+        account: "help-eks-spe-${parameters.env}-navnonprod-pdx"
+        app: &app-name
+        cloudProvider: kubernetes
+        location: entitelements
+        manifestName: "deployment eks-spe-${parameters.env}-entitelements-core-entitlements-baseline"
+        mode: static
+        options:
+          cascading: true
+    - type: checkPreconditions
+      properties:
+        name: Check Canary
+        refId: "6"
+        preconditions:
+          - type: expression
+            context:
+              expression: "${parameters.canary_deploy} == true"
+            failPipeline: true
+    - type: bakeManifest
+      properties:
+        name: Bake Canary
+        refId: "7"
+        requisiteStageRefIds: [ "6" ]
+        stageEnabled:
+          type: expression
+          expression: "${parameters.canary_deploy} == true"
+        templateRenderer: helm2
+        namespace: entitelements
+        outputName: core-entitlements
+        overrides:
+          tomcat-composition.deployType: "-canary"
+          tomcat-composition.replicaCount: "${parameters.canarycount}"
+        inputArtifacts:
+          - account: *nav-helm-prod-virt
+            id: *nav-helm-prod-virt-id
+          - account: sie-github
+            id: "2f18910a-8215-49d4-8be4-41a7715715d3"
+        expectedArtifacts:
+          - id: nonsensical-1
+            displayName: core-entitelements-canary
+            #matchArtifact:
+              #kind: base64
+              #name: core-entitlements
+              #type: embedded/base64
+            useDefaultArtifact: false
+    - type: deployManifest
+      properties:
+        name: Deploy Canary
+        refId: "8"
+        requisiteStageRefIds: [ "7" ]
+        stageEnabled:
+          type: expression
+          expression: "${parameters.canary_deploy} == true"
+        account: "hlp-eks-spe-${parameters.env}-navnonprod-pdx"
+        cloudProvider: kubernetes
+        completeOtherBranchesThenFail: false
+        continuePipeline: true
+        failPipeline: false
+        manifests:
+          - |
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: test-pod
+            spec:
+              containers:
+                - name: test
+                  image: nginx:1.17
+        moniker:
+          app: core-entitelements
+        skipExpressionEvaluation: true
+        source: artifact
+    - type: manualJudgment
+      properties:
+        name: Manual Judgment
+        refId: "9"
+        requisiteStageRefIds: [ "8" ]
+        stageEnabled:
+          type: expression
+          expression: "${parameters.canary_deploy} == true"
+        failPipeline: true
+        continuePipeline: false
+        completeOtherBranchesThenFail: false
+        instructions: "Do you want to promote canary to Production?"
+        judgmentInputs:
+          - value: No promote
+          - value: Promote

@@ -3,5 +3,5 @@ kind: Application
 metadata:
   name: deploy-manifest-ds
 spec:
-  email: cristhian.castaneda@armory.io
+  email: foo@example.com
   description: Testing the Deploy Manifest stage.
