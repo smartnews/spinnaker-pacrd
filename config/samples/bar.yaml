@@ -3,7 +3,7 @@ kind: Application
 metadata:
   name: my-app
 spec:
-  email: fernando.freire@armory.io
+  email: foo@example.com
   description: because reasons
   permissions:
     READ:

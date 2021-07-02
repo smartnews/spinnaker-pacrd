@@ -1,0 +1,81 @@
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx-hello-world
+spec:
+  email: foo@example.com
+  description: Sample pipeline showing a blue/green deployment
+---
+apiVersion: pacrd.armory.spinnaker.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: production-deploy
+spec:
+  description: This is a live demo.
+  application: &app-name nginx-hello-world
+  triggers:
+    - type: docker
+      properties:
+        enabled: true
+        account: dockerhub
+        organization: myorganization
+        registry: index.docker.io
+        repository: myorganization/nginx-mirror
+  expectedArtifacts:
+    - id: &manifest-repo-id kustomize-example-repo 
+      displayName: manifest-repo
+      matchArtifact: &manifest-repo-artifact
+        type: git/repo
+        properties:
+          artifactAccount: ghr-foo
+          reference: https://github.com/foo/kustomize-example.git
+          version: master
+      defaultArtifact:
+        <<: *manifest-repo-artifact
+      useDefaultArtifact: true
+      usePriorArtifact: false
+  stages:
+    - type: BakeManifest
+      properties:
+        refId: "1"
+        name: Render Kustomize Template
+        templateRenderer: KUSTOMIZE
+        kustomizeFilePath: "overlays/production/kustomization.yaml"
+        inputArtifact:
+          id: *manifest-repo-id
+          account: ghr-foo
+        expectedArtifacts:
+          - id: &rendered-manifest-id rendered-manifest-id
+            displayName: app-manifest
+            useDefaultArtifact: false
+            usePriorArtifact: false
+            matchArtifact:
+              type: embedded/base64
+              properties:
+                name: app-manifest
+    - type: ManualJudgment
+      properties:
+        name: Continue Deployment?
+        refId: "2"
+        requisiteStageRefIds: [ "1" ]
+    - type: DeployManifest
+      properties:
+        name: Deploy Application
+        refId: "3"
+        requisiteStageRefIds: ["2"]
+        account: kubernetes
+        cloudProvider: kubernetes
+        source: artifact
+        manifestArtifactAccount: embedded-artifact
+        manifestArtifactId: *rendered-manifest-id
+        moniker:
+          app: *app-name
+        namespaceOverride: myns
+        trafficManagement:
+          enabled: true
+          options:
+            enableTraffic: true
+            namespace: myns
+            services:
+              - service production-hola-mundio
+            strategy: redblack

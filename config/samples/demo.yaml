@@ -4,7 +4,7 @@ kind: Application
 metadata:
   name: api-server
 spec:
-  email: fernando.freire@armory.io
+  email: foo@example.com
   description: Slightly more complicated pipeline
 
 ---
