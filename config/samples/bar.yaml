@@ -3,7 +3,7 @@ kind: Application
 metadata:
   name: my-app
 spec:
-  email: ***REMOVED***
+  email: foo@example.com
   description: because reasons
   permissions:
     READ:

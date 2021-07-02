@@ -1,8 +1,0 @@
-apiVersion: pacrd.armory.spinnaker.io/v1alpha1
-kind: Application
-metadata:
-  name: mylittleapp
-spec:
-  email: ***REMOVED***
-  user: ***REMOVED***
-  description: my fancy app

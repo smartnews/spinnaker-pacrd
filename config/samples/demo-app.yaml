@@ -3,5 +3,5 @@ kind: Application
 metadata:
   name: demo-application
 spec:
-  email: ***REMOVED***
+  email: foo@example.com
   description: We are doing a demo!
