@@ -24,7 +24,7 @@ import (
 	"github.com/armory-io/pacrd/events"
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/armory/plank"
+	"github.com/armory/plank/v3"
 	"github.com/go-logr/logr"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
