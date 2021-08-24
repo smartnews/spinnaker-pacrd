@@ -18,5 +18,5 @@ metadata:
 spec:
   type: service
   lifecycle: production
-  owner: fernando.freire@armory.io
+  owner: user:fernando.freire@armory.io
   system: armory-enterprise
