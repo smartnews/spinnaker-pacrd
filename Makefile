@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-RELEASE ?= ""  # Must be set at runtime
+RELEASE ?= "1.0.1"  # Must be set at runtime
 IMG ?= armory/pacrd:${RELEASE}
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:crdVersions=v1"
@@ -67,6 +67,10 @@ uninstall: manifests
 deploy: manifests
 	cd config/manager && kustomize edit set image controller=${IMG}
 	kustomize build config/default | kubectl apply -f -
+
+generate-manifests: manifests
+	cd config/manager && kustomize edit set image controller=${IMG}
+	kustomize build config/default > pacrd.yaml
 
 # Generate the manifest that we'll publish for our customers
 generate-public-manifest: manifests
